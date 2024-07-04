@@ -1,30 +1,49 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, FlatList, Alert, TextInput, Text } from 'react-native';
 import { Button, ListItem, Icon, Switch } from 'react-native-elements';
+import { db } from './config';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 
 const TaskManager = ({ initialTasks = [] }) => {
   const [taskList, setTaskList] = useState(initialTasks);
   const [newTask, setNewTask] = useState('');
 
-  const handleAddTask = () => {
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'tasks'), (snapshot) => {
+      const newTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTaskList(newTasks);
+    });
+    return unsubscribe;
+  }, []);
+
+  const handleAddTask = async () => {
     if (newTask.trim() === '') {
       Alert.alert('Error', 'Task title cannot be empty');
       return;
     }
-    const task = { id: Date.now().toString(), title: newTask, completed: false };
-    setTaskList([task, ...taskList.filter(task => !task.completed), ...taskList.filter(task => task.completed)]);
-    setNewTask('');
+    try {
+      await addDoc(collection(db, 'tasks'), { title: newTask, completed: false });
+      setNewTask('');
+    } catch (error) {
+      console.error('Error adding task: ', error);
+    }
   };
 
-  const handleToggleTask = (id) => {
-    const updatedTasks = taskList.map(task =>
-      task.id === id ? { ...task, completed: !task.completed } : task
-    ).sort((a, b) => a.completed - b.completed);
-    setTaskList(updatedTasks);
+  const handleToggleTask = async (id, completed) => {
+    try {
+      const taskDoc = doc(db, 'tasks', id);
+      await updateDoc(taskDoc, { completed: !completed });
+    } catch (error) {
+      console.error('Error updating task: ', error);
+    }
   };
 
-  const handleDeleteTask = (id) => {
-    setTaskList(taskList.filter(task => task.id !== id));
+  const handleDeleteTask = async (id) => {
+    try {
+      await deleteDoc(doc(db, 'tasks', id));
+    } catch (error) {
+      console.error('Error deleting task: ', error);
+    }
   };
 
   return (
@@ -46,7 +65,7 @@ const TaskManager = ({ initialTasks = [] }) => {
           <ListItem bottomDivider>
             <Switch
               value={item.completed}
-              onValueChange={() => handleToggleTask(item.id)}
+              onValueChange={() => handleToggleTask(item.id, item.completed)}
             />
             <ListItem.Content>
               <ListItem.Title style={item.completed ? styles.taskCompleted : styles.taskPending}>
